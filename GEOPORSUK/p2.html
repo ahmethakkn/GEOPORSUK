@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D GIS Explorer</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--sw:280px;--sbg:#1c1c1e;--bdr:#2c2c2e;--tx:#c8c8cc;--muted:#6e6e74;--accent:#4a9eff}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif}
+#intro{position:fixed;inset:0;z-index:9999;background:#000;display:flex;align-items:center;justify-content:center;transition:opacity .9s ease}
+#intro.out{opacity:0;pointer-events:none}
+#intro-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}
+.intro-caption{position:relative;z-index:2;text-align:center;color:#fff;pointer-events:none;animation:captionIn 1s ease .5s both}
+.intro-caption h1{font-size:52px;font-weight:200;letter-spacing:10px;opacity:.9}
+.intro-caption p{font-size:13px;letter-spacing:4px;opacity:.4;margin-top:10px}
+@keyframes captionIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+#skip-btn{position:absolute;bottom:28px;right:28px;z-index:9998;color:rgba(255,255,255,.45);font-size:12px;letter-spacing:2px;cursor:pointer;pointer-events:auto;padding:8px 14px;border:1px solid rgba(255,255,255,.18);border-radius:20px;background:rgba(0,0,0,.35);backdrop-filter:blur(6px);transition:color .2s,background .2s,border-color .2s;user-select:none}
+#skip-btn:hover{color:#fff;background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.4)}
+#intro-bar{position:absolute;bottom:0;left:0;height:2px;background:rgba(255,255,255,.25);width:100%;z-index:9998}
+#intro-bar-fill{height:100%;background:var(--accent);width:0%}
+#app{display:flex;width:100vw;height:100vh;opacity:0;transition:opacity .8s ease}
+#app.on{opacity:1}
+#sb{position:relative;width:var(--sw);min-width:var(--sw);height:100vh;background:var(--sbg);border-right:1px solid var(--bdr);overflow-y:auto;overflow-x:hidden;z-index:10;transition:margin-left .3s ease;scrollbar-width:thin;scrollbar-color:#3a3a3c transparent}
+#sb.shut{margin-left:calc(-1*var(--sw))}
+#sb::-webkit-scrollbar{width:3px}
+#sb::-webkit-scrollbar-thumb{background:#3a3a3c;border-radius:2px}
+#tog{position:fixed;left:var(--sw);top:50%;transform:translateY(-50%);z-index:100;background:#252527;border:1px solid #3a3a3c;border-left:none;color:#888;cursor:pointer;padding:15px 5px;border-radius:0 8px 8px 0;font-size:11px;transition:left .3s ease,background .2s,color .2s;display:flex;align-items:center}
+#tog:hover{background:#333;color:#eee}
+#tog.shut{left:0}
+.sb-hdr{padding:18px 16px 14px;font-size:13px;font-weight:500;color:var(--tx);border-bottom:1px solid var(--bdr);letter-spacing:.3px}
+.map-block{padding:14px 16px;border-bottom:1px solid var(--bdr)}
+.sl-row{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+.sl-ic{font-size:14px;color:#666;min-width:18px;text-align:center}
+.sl-label{font-size:10px;color:#555;margin-bottom:3px;padding-left:2px;letter-spacing:.3px}
+input[type=range]{flex:1;-webkit-appearance:none;height:3px;background:#3a3a3c;border-radius:2px;outline:none;cursor:pointer}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--accent);cursor:pointer;transition:transform .1s}
+input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.25)}
+.sl-val{font-size:11px;color:#666;font-family:monospace;min-width:42px;text-align:right}
+.build-note{font-size:10px;color:#3a5a3a;background:rgba(60,180,60,.07);border:1px solid rgba(60,180,60,.15);border-radius:4px;padding:4px 8px;margin-bottom:10px;line-height:1.4}
+.save-btn{display:block;margin:10px auto 4px;padding:7px 26px;background:var(--accent);color:#fff;border:none;border-radius:20px;font-size:13px;cursor:pointer;transition:background .2s,transform .1s}
+.save-btn:hover{background:#2d7ae0}
+.save-btn:active{transform:scale(0.97)}
+.sect{border-bottom:1px solid var(--bdr)}
+.sect-hd{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;font-size:13px;color:var(--muted);cursor:pointer;user-select:none;transition:background .15s,color .15s}
+.sect-hd:hover{background:rgba(255,255,255,.04);color:#aaa}
+.sect-hd.open{color:var(--tx)}
+.arr{font-size:9px;color:#444;transition:transform .2s}
+.sect-hd.open .arr{transform:rotate(90deg);color:#777}
+.sect-bd{padding:0 16px;max-height:0;overflow:hidden;transition:max-height .25s ease,padding .25s ease}
+.sect-bd.open{max-height:600px;padding:12px 16px}
+.ab{display:flex;align-items:center;gap:8px;width:100%;padding:9px 12px;margin-bottom:7px;border:1px solid;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;transition:all .2s;background:transparent}
+.ab:disabled{opacity:.4;cursor:not-allowed}
+.ab.primary{background:rgba(74,158,255,.12);color:#6aafff;border-color:rgba(74,158,255,.25)}
+.ab.primary:hover:not(:disabled){background:rgba(74,158,255,.22)}
+.ab.primary.active{background:rgba(220,50,50,.14);color:#f07070;border-color:rgba(220,50,50,.3)}
+.ab.ok{background:rgba(40,180,80,.12);color:#5cd87a;border-color:rgba(40,180,80,.25)}
+.ab.ok:hover:not(:disabled){background:rgba(40,180,80,.22)}
+.ab.ghost{background:rgba(255,255,255,.04);color:#666;border-color:#333}
+.ab.ghost:hover:not(:disabled){background:rgba(255,255,255,.08);color:#999}
+.ab.undo{background:rgba(255,180,50,.08);color:#ffbb44;border-color:rgba(255,180,50,.22)}
+.ab.undo:hover:not(:disabled){background:rgba(255,180,50,.18)}
+.pt-info{font-size:11px;color:#555;text-align:center;margin-top:4px;line-height:1.5}
+#mv{flex:1;position:relative;overflow:hidden}
+#gc,#tc{position:absolute;inset:0;width:100%;height:100%;display:block}
+#tc{display:none}
+.pill{position:absolute;background:rgba(18,18,22,.88);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.1);border-radius:20px;color:#bbb;font-size:12px;padding:7px 16px;pointer-events:none}
+#draw-ind{top:14px;left:50%;transform:translateX(-50%);display:none;background:rgba(200,45,20,.88);border-color:rgba(255,90,50,.35);color:#fff;white-space:nowrap}
+#draw-ind.on{display:block}
+.blink{display:inline-block;width:7px;height:7px;background:#ff5533;border-radius:50%;margin-right:7px;vertical-align:middle;animation:bl 1s infinite}
+@keyframes bl{0%,100%{opacity:1}50%{opacity:.25}}
+#back-btn{position:absolute;top:14px;right:14px;background:rgba(25,25,30,.88);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.12);color:#bbb;font-size:12px;padding:8px 18px;border-radius:7px;cursor:pointer;display:none;transition:background .2s,color .2s;z-index:5}
+#back-btn:hover{background:rgba(55,55,65,.9);color:#fff}
+#back-btn.on{display:block}
+#terrain-hint{bottom:14px;left:50%;transform:translateX(-50%);display:none;white-space:nowrap}
+#terrain-hint.on{display:block}
+#save-toast{position:absolute;bottom:52px;left:50%;transform:translateX(-50%);background:rgba(40,160,80,.92);color:#fff;font-size:12px;padding:7px 18px;border-radius:20px;pointer-events:none;opacity:0;transition:opacity .3s;white-space:nowrap}
+#save-toast.show{opacity:1}
+#water-level-lbl{
+  position:absolute;left:14px;bottom:14px;display:none;
+  background:rgba(10,40,80,.82);backdrop-filter:blur(10px);
+  border:1px solid rgba(74,158,255,.28);border-radius:20px;
+  color:#7abfff;font-size:12px;padding:6px 14px;
+  pointer-events:none;white-space:nowrap;
+  transition:opacity .2s;
+}
+#water-level-lbl.on{display:block}
+#webgl-error{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#0a0a0c;color:#f07070;font-size:14px;text-align:center;padding:24px}
+#webgl-error.on{display:flex}
+#loader{position:absolute;inset:0;background:rgba(0,0,0,.72);display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:50}
+#loader.on{display:flex}
+.spin{width:36px;height:36px;border:3px solid rgba(255,255,255,.15);border-top-color:var(--accent);border-radius:50%;animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.load-tx{color:#888;font-size:13px}
+body.dmode #gc{cursor:crosshair}
+</style>
+</head>
+<body>
+
+<div id="intro">
+  <video id="intro-vid" autoplay muted playsinline>
+    <source src="ek1.mp4" type="video/mp4">
+  </video>
+  <div class="intro-caption">
+    <h1>GeoPorsuk</h1>
+    <p>3D DÜNYA HARİTASI &amp; ARAZİ ANALİZİ</p>
+  </div>
+  <div id="skip-btn">ATLA &nbsp;→</div>
+  <div id="intro-bar"><div id="intro-bar-fill"></div></div>
+</div>
+
+<div id="app">
+  <button id="tog" title="Kenar çubuğunu aç/kapat">◀</button>
+
+  <aside id="sb">
+    <div class="sb-hdr">3D GIS Explorer</div>
+    <div class="map-block">
+
+      <p class="sl-label">↻ Yatay Görüş Açısı</p>
+      <div class="sl-row">
+        <input type="range" id="s-rot" min="-180" max="180" value="0">
+        <span class="sl-val" id="v-rot">0°</span>
+      </div>
+
+      <p class="sl-label">↕ Yükseklik Abartması</p>
+      <div class="sl-row">
+        <input type="range" id="s-hgt" min="1" max="50" value="10">
+        <span class="sl-val" id="v-hgt">95u</span>
+      </div>
+
+      <p class="sl-label">⊞ Ağ Yoğunluğu</p>
+      <div class="sl-row">
+        <input type="range" id="s-res" min="1" max="10" value="5">
+        <span class="sl-val" id="v-res">80 seg</span>
+      </div>
+      <p class="build-note">↑ Yükseklik ve Ağ ayarları sonraki arazi oluşturmada geçerli olur.</p>
+
+      <button class="save-btn" id="save-btn">⬇ Ekran Görüntüsü Al</button>
+    </div>
+
+    <div class="sect">
+      <div class="sect-hd" onclick="toggleSection(this)"><span>Işık</span><span class="arr">▶</span></div>
+      <div class="sect-bd">
+        <div class="sl-row"><span class="sl-ic">☀</span><input type="range" id="s-sun" min="0" max="100" value="75"><span class="sl-val" id="v-sun">75</span></div>
+        <div class="sl-row"><span class="sl-ic">◐</span><input type="range" id="s-amb" min="0" max="100" value="40"><span class="sl-val" id="v-amb">40</span></div>
+      </div>
+    </div>
+
+    <div class="sect">
+      <div class="sect-hd" onclick="toggleSection(this)"><span>Su</span><span class="arr">▶</span></div>
+      <div class="sect-bd">
+        <div class="sl-row"><span class="sl-ic">💧</span><input type="range" id="s-wat" min="0" max="100" value="8"><span class="sl-val" id="v-wat">7 m</span></div>
+      </div>
+    </div>
+
+    <div class="sect">
+      <div class="sect-hd open" onclick="toggleSection(this)"><span>Çizim</span><span class="arr">▶</span></div>
+      <div class="sect-bd open">
+        <button class="ab primary" id="btn-draw"><span>🖊</span> Polygon Çiz</button>
+        <button class="ab ok"      id="btn-done" disabled><span>✓</span> Tamamla &amp; 3D Görüntüle</button>
+        <button class="ab undo"    id="btn-undo" disabled><span>↩</span> Son Noktayı Geri Al</button>
+        <button class="ab ghost"   id="btn-clr"  disabled><span>✕</span> Temizle</button>
+        <p class="pt-info" id="pt-inf">Çizim modunu etkinleştirin</p>
+      </div>
+    </div>
+  </aside>
+
+  <div id="mv">
+    <canvas id="gc"></canvas>
+    <canvas id="tc"></canvas>
+    <div id="draw-ind" class="pill"><span class="blink"></span>Çizim Modu — Tıkla: nokta ekle &nbsp;|&nbsp; Çift tık / Sağ tık: polygon kapat</div>
+    <button id="back-btn">← Haritaya Dön</button>
+    <div id="terrain-hint" class="pill">🖱 Sürükle: döndür &nbsp;|&nbsp; Kaydır: yaklaştır / uzaklaştır</div>
+    <div id="save-toast">✓ PNG indirildi</div>
+    <div id="water-level-lbl">💧 Su: 7 m</div>
+    <div id="webgl-error">
+      <div style="font-size:32px">⚠️</div>
+      <strong>WebGL desteklenmiyor</strong>
+      <p style="color:#888;font-size:12px;max-width:320px">Tarayıcınız WebGL desteklemiyor. Lütfen Chrome, Firefox veya Edge kullanın.</p>
+    </div>
+    <div id="loader">
+      <div class="spin"></div>
+      <div class="load-tx">3D Arazi oluşturuluyor…</div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+(function () {
+
+/* ── INTRO ── */
+const INTRO_MS = 4000;
+const introEl  = document.getElementById('intro');
+const appEl    = document.getElementById('app');
+let launched   = false;
+
+function launch() {
+  if (launched) return;
+  launched = true;
+  introEl.classList.add('out');
+  appEl.classList.add('on');
+  setTimeout(function () { introEl.remove(); }, 1000);
+  initGlobe();
+}
+
+const barFill = document.getElementById('intro-bar-fill');
+if (barFill) {
+  barFill.getBoundingClientRect();
+  barFill.style.transition = 'width ' + INTRO_MS + 'ms linear';
+  barFill.style.width = '100%';
+}
+let introTimer = setTimeout(launch, INTRO_MS);
+document.getElementById('skip-btn').addEventListener('click', function () { clearTimeout(introTimer); launch(); });
+document.getElementById('intro-vid').addEventListener('ended', function () { clearTimeout(introTimer); launch(); });
+
+/* ── SIDEBAR ── */
+const sbEl = document.getElementById('sb');
+const togEl = document.getElementById('tog');
+let sidebarOpen = true;
+togEl.addEventListener('click', function () {
+  sidebarOpen = !sidebarOpen;
+  sbEl.classList.toggle('shut', !sidebarOpen);
+  togEl.textContent = sidebarOpen ? '◀' : '▶';
+  togEl.classList.toggle('shut', !sidebarOpen);
+  setTimeout(onResize, 320);
+});
+function toggleSection(hd) { hd.classList.toggle('open'); hd.nextElementSibling.classList.toggle('open'); }
+window.toggleSection = toggleSection;
+
+/* ── SLIDER ETİKET GÜNCELLEMELERİ ── */
+[['s-sun','v-sun'],['s-amb','v-amb'],['s-wat','v-wat']].forEach(function(pair) {
+  const si = document.getElementById(pair[0]), vi = document.getElementById(pair[1]);
+  if (si && vi) si.addEventListener('input', function () { vi.textContent = si.value; });
+});
+
+document.getElementById('s-rot').addEventListener('input', function () {
+  document.getElementById('v-rot').textContent = this.value + '°';
+  orb.tt = parseFloat(this.value) * (Math.PI / 180);
+});
+
+document.getElementById('s-hgt').addEventListener('input', function () {
+  document.getElementById('v-hgt').textContent = (parseInt(this.value) * 2 + 75) + 'u';
+});
+
+document.getElementById('s-res').addEventListener('input', function () {
+  const seg = Math.round(32 + (parseInt(this.value) - 1) * 96 / 9);
+  document.getElementById('v-res').textContent = seg + ' seg';
+});
+
+/* ── SLIDER → THREE.JS BAĞLANTISI ── */
+let terrainSun = null, terrainAmb = null, terrainWater = null;
+let currentMAXH = 95;
+
+document.getElementById('s-sun').addEventListener('input', function () { if (terrainSun) terrainSun.intensity = (this.value / 100) * 2.2; });
+document.getElementById('s-amb').addEventListener('input', function () { if (terrainAmb) terrainAmb.intensity = (this.value / 100) * 0.9; });
+
+/* Su seviyesi — ExtrudeGeometry y=[0..MAXH] aralığında başlar (y=0 tabanda).
+   scale.y = waterY/MAXH → alt yüzey y=0'da sabit kalır, üst yüzey waterY'ye çıkar.
+   BoxGeometry'nin aksine merkez ofset gerekmez: position.y = 0. */
+document.getElementById('s-wat').addEventListener('input', function () {
+  const pct    = parseInt(this.value);
+  const waterY = (pct / 100) * currentMAXH;
+  const metres = Math.round(waterY);
+
+  document.getElementById('v-wat').textContent = metres + ' m';
+  document.getElementById('water-level-lbl').textContent = '\uD83D\uDCA7 Su: ' + metres + ' m';
+
+  if (terrainWater) {
+    const s = (currentMAXH > 0) ? waterY / currentMAXH : 0;
+    terrainWater.visible = s > 0.0005;
+    terrainWater.scale.y = Math.max(s, 0.001);
+    /* position.y kasıtlı olarak atandı — ExtrudeGeometry y=0'dan başlar,
+       scale.y zemin seviyesini otomatik olarak sabit tutar. */
+  }
+});
+
+/* ── FIX 4: KAYDET ── */
+document.getElementById('save-btn').addEventListener('click', function () {
+  const tc = document.getElementById('tc');
+  const gc = document.getElementById('gc');
+  const activeCanvas = (tc.style.display !== 'none') ? tc : gc;
+  requestAnimationFrame(function () {
+    try {
+      const url = activeCanvas.toDataURL('image/png');
+      const a   = document.createElement('a');
+      a.href     = url;
+      a.download = '3d-gis-' + Date.now() + '.png';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      const toast = document.getElementById('save-toast');
+      toast.classList.add('show');
+      setTimeout(function () { toast.classList.remove('show'); }, 2000);
+    } catch (e) {
+      alert('Ekran görüntüsü alınamadı. (Tarayıcı güvenlik kısıtı)');
+    }
+  });
+});
+
+/* ═══════════════════ KÜRE — THREE.JS ═══════════════════ */
+let gR, gS, gC, globeMesh;
+let gAnimId = null, gRunning = false;
+const orb = { phi:1.25, theta:0.4, r:520, tp:1.25, tt:0.4, tr:520 };
+let drag = false, px = 0, py = 0;
+
+let drawMode = false;
+const pts = [], markers = [];
+let lineObj = null;
+const raycaster = new THREE.Raycaster();
+
+function initGlobe() {
+  const canvas = document.getElementById('gc');
+  if (!window.WebGLRenderingContext) { document.getElementById('webgl-error').classList.add('on'); return; }
+  try {
+    const tc = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    if (!tc) throw 0;
+  } catch (e) { document.getElementById('webgl-error').classList.add('on'); return; }
+
+  const sz = mvSize();
+  gR = new THREE.WebGLRenderer({ canvas, antialias: true });
+  gR.setPixelRatio(Math.min(devicePixelRatio, 2));
+  gR.setSize(sz.w, sz.h);
+  gR.setClearColor(0x00000c);
+
+  gS = new THREE.Scene();
+  gC = new THREE.PerspectiveCamera(45, sz.w / sz.h, 1, 15000);
+  syncGlobeCam();
+
+  const sp = new Float32Array(9000 * 3);
+  for (let i = 0; i < 9000; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const b = Math.acos(2 * Math.random() - 1);
+    const r = 3000 + Math.random() * 1800;
+    sp[i*3] = r*Math.sin(b)*Math.cos(a); sp[i*3+1] = r*Math.cos(b); sp[i*3+2] = r*Math.sin(b)*Math.sin(a);
+  }
+  const sg = new THREE.BufferGeometry();
+  sg.setAttribute('position', new THREE.BufferAttribute(sp, 3));
+  gS.add(new THREE.Points(sg, new THREE.PointsMaterial({ color:0xffffff, size:1.4, sizeAttenuation:true })));
+
+  gS.add(new THREE.AmbientLight(0x1a2a4a, 1.0));
+  const sun = new THREE.DirectionalLight(0xfff8f0, 2.8);
+  sun.position.set(900, 350, 600); gS.add(sun);
+
+  const geo = new THREE.SphereGeometry(200, 72, 72);
+  const mat = new THREE.MeshPhongMaterial({ color:0x1a4a8a, specular:new THREE.Color(0x0a1828), shininess:12 });
+  globeMesh = new THREE.Mesh(geo, mat); gS.add(globeMesh);
+
+  new THREE.TextureLoader().load(
+    'https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_atmos_2048.jpg',
+    function (t) { mat.map = t; mat.color.set(0xffffff); mat.needsUpdate = true; },
+    undefined,
+    function ()   { mat.map = makeEarthTex(); mat.color.set(0xffffff); mat.needsUpdate = true; }
+  );
+
+  gS.add(new THREE.Mesh(new THREE.SphereGeometry(205,48,48), new THREE.MeshPhongMaterial({color:0x4488ff,transparent:true,opacity:0.10,side:THREE.BackSide})));
+  gS.add(new THREE.Mesh(new THREE.SphereGeometry(218,32,32), new THREE.MeshBasicMaterial({color:0x224499,transparent:true,opacity:0.05,side:THREE.BackSide})));
+
+  bindGlobeEvents(canvas);
+  onResize();
+  window.addEventListener('resize', onResize);
+  startGlobe();
+}
+
+function syncGlobeCam() {
+  gC.position.set(orb.r*Math.sin(orb.phi)*Math.cos(orb.theta), orb.r*Math.cos(orb.phi), orb.r*Math.sin(orb.phi)*Math.sin(orb.theta));
+  gC.lookAt(0,0,0);
+}
+
+function startGlobe() { if (gRunning) return; gRunning = true; tickGlobe(); }
+function stopGlobe()  { gRunning = false; cancelAnimationFrame(gAnimId); gAnimId = null; }
+
+function tickGlobe() {
+  if (!gRunning) return;
+  gAnimId = requestAnimationFrame(tickGlobe);
+  orb.phi   += (orb.tp - orb.phi)   * 0.09;
+  orb.theta += (orb.tt - orb.theta) * 0.09;
+  orb.r     += (orb.tr - orb.r)     * 0.09;
+  if (!drag && !drawMode) orb.tt += 0.0005;
+  syncGlobeCam();
+  gR.render(gS, gC);
+}
+
+function bindGlobeEvents(canvas) {
+  canvas.addEventListener('mousedown', function (e) {
+    if (drawMode && e.button === 0) { addPt(e); return; }
+    if (!drawMode && e.button === 0) { drag = true; px = e.clientX; py = e.clientY; }
+  });
+  canvas.addEventListener('dblclick', function () { if (drawMode && pts.length >= 3) closePoly(); });
+  canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); if (drawMode && pts.length >= 3) closePoly(); });
+  canvas.addEventListener('mousemove', function (e) {
+    if (!drag || drawMode) return;
+    orb.tt -= (e.clientX - px) * 0.007;
+    orb.tp  = Math.max(0.05, Math.min(Math.PI - 0.05, orb.tp + (e.clientY - py) * 0.007));
+    px = e.clientX; py = e.clientY;
+  });
+  canvas.addEventListener('mouseup',    function () { drag = false; });
+  canvas.addEventListener('mouseleave', function () { drag = false; });
+  canvas.addEventListener('wheel', function (e) { e.preventDefault(); orb.tr = Math.max(240, Math.min(1900, orb.tr + e.deltaY * 1.5)); }, { passive:false });
+  let t0d = 0;
+  canvas.addEventListener('touchstart', function (e) {
+    if (e.touches.length === 1) { drag=true; px=e.touches[0].clientX; py=e.touches[0].clientY; }
+    else if (e.touches.length === 2) { drag=false; const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY; t0d=Math.sqrt(dx*dx+dy*dy); }
+  }, { passive:true });
+  canvas.addEventListener('touchmove', function (e) {
+    e.preventDefault();
+    if (e.touches.length === 1 && drag) {
+      orb.tt -= (e.touches[0].clientX - px)*0.007;
+      orb.tp  = Math.max(0.05, Math.min(Math.PI-0.05, orb.tp+(e.touches[0].clientY-py)*0.007));
+      px=e.touches[0].clientX; py=e.touches[0].clientY;
+    } else if (e.touches.length === 2) {
+      const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;
+      const d=Math.sqrt(dx*dx+dy*dy);
+      orb.tr=Math.max(240,Math.min(1900,orb.tr*t0d/d)); t0d=d;
+    }
+  }, { passive:false });
+  canvas.addEventListener('touchend', function () { drag=false; }, { passive:true });
+}
+
+/* ── POLYGON ÇİZİM ── */
+function addPt(e) {
+  const canvas = document.getElementById('gc');
+  const rect   = canvas.getBoundingClientRect();
+  const ndc = new THREE.Vector2(((e.clientX-rect.left)/rect.width)*2-1, -((e.clientY-rect.top)/rect.height)*2+1);
+  raycaster.setFromCamera(ndc, gC);
+  const hits = raycaster.intersectObject(globeMesh);
+  if (!hits.length) return;
+  const wp  = hits[0].point.clone().normalize().multiplyScalar(202.5);
+  const lat = Math.asin(hits[0].point.clone().normalize().y) * (180/Math.PI);
+  const lon = Math.atan2(hits[0].point.z, hits[0].point.x) * (180/Math.PI);
+  pts.push({ w:wp.clone(), lat, lon });
+  const mk = new THREE.Mesh(new THREE.SphereGeometry(1,1,1), new THREE.MeshBasicMaterial({color:0xff4400}));
+  mk.position.copy(wp); gS.add(mk); markers.push(mk);
+  rebuildLine(false); updateDrawUI();
+}
+
+function rebuildLine(closed) {
+  if (lineObj) gS.remove(lineObj); lineObj = null;
+  if (pts.length < 2) return;
+  const arr = pts.map(function (p) { return p.w.clone(); });
+  if (closed) arr.push(pts[0].w.clone());
+  lineObj = new THREE.Line(new THREE.BufferGeometry().setFromPoints(arr), new THREE.LineBasicMaterial({color: closed ? 0xffaa00 : 0xff5500}));
+  gS.add(lineObj);
+}
+
+function closePoly() {
+  rebuildLine(true); drawMode = false;
+  document.body.classList.remove('dmode');
+  document.getElementById('draw-ind').classList.remove('on');
+  const db = document.getElementById('btn-draw');
+  db.innerHTML = '<span>🖊</span> Polygon Çiz'; db.classList.remove('active');
+  showLoader(); setTimeout(buildTerrain, 150);
+}
+
+function clearPoly() {
+  pts.length = 0; markers.forEach(function (m) { gS.remove(m); }); markers.length = 0;
+  if (lineObj) { gS.remove(lineObj); lineObj = null; } updateDrawUI();
+}
+
+function undoLastPt() {
+  if (!pts.length) return;
+  pts.pop(); const mk = markers.pop(); if (mk) gS.remove(mk);
+  rebuildLine(false); updateDrawUI();
+}
+
+function updateDrawUI() {
+  const n = pts.length;
+  document.getElementById('pt-inf').textContent =
+    n === 0 ? 'Haritaya tıklayarak nokta ekleyin' :
+    n < 3   ? n + ' nokta (en az 3 gerekli)' :
+              n + ' nokta — Çift tık / Sağ tık ile polygon\'u kapatın';
+  document.getElementById('btn-done').disabled = n < 3;
+  document.getElementById('btn-undo').disabled = n === 0;
+  document.getElementById('btn-clr').disabled  = n === 0;
+}
+
+document.getElementById('btn-draw').addEventListener('click', function () {
+  drawMode = !drawMode;
+  document.body.classList.toggle('dmode', drawMode);
+  document.getElementById('draw-ind').classList.toggle('on', drawMode);
+  this.innerHTML = drawMode ? '<span>⏸</span> Çizimi Durdur' : '<span>🖊</span> Polygon Çiz';
+  this.classList.toggle('active', drawMode);
+});
+document.getElementById('btn-done').addEventListener('click', function () { if (pts.length >= 3) closePoly(); });
+document.getElementById('btn-undo').addEventListener('click', undoLastPt);
+document.getElementById('btn-clr').addEventListener('click', clearPoly);
+document.getElementById('back-btn').addEventListener('click', backToGlobe);
+
+function mvSize() { const r = document.getElementById('mv').getBoundingClientRect(); return { w: r.width||window.innerWidth, h: r.height||window.innerHeight }; }
+function onResize() {
+  const sz = mvSize();
+  if (gR) { gR.setSize(sz.w,sz.h); gC.aspect=sz.w/sz.h; gC.updateProjectionMatrix(); }
+  if (tR) { tR.setSize(sz.w,sz.h); tC.aspect=sz.w/sz.h; tC.updateProjectionMatrix(); }
+}
+
+function makeEarthTex() {
+  const S=1024, c=document.createElement('canvas'); c.width=S; c.height=S;
+  const x=c.getContext('2d');
+  const og=x.createLinearGradient(0,0,0,S);
+  og.addColorStop(0,'#0a2060'); og.addColorStop(0.5,'#1a5a9a'); og.addColorStop(1,'#0a2060');
+  x.fillStyle=og; x.fillRect(0,0,S,S);
+  x.fillStyle='#2c6a2c';
+  [[180,268,88,108,.15],[248,448,54,118,.05],[492,228,54,64,0],[504,418,64,128,.05],[690,210,175,100,-.1],[768,452,64,44,0]].forEach(function(v){
+    x.save(); x.translate(v[0],v[1]); x.rotate(v[4]); x.scale(v[2]/50,v[3]/50);
+    x.beginPath(); x.arc(0,0,50,0,Math.PI*2); x.restore(); x.fill();
+  });
+  x.fillStyle='#c8dcc8'; x.save(); x.translate(298,152); x.scale(.8,1); x.beginPath(); x.arc(0,0,38,0,Math.PI*2); x.fill(); x.restore();
+  const i1=x.createLinearGradient(0,0,0,60); i1.addColorStop(0,'rgba(220,235,255,1)'); i1.addColorStop(1,'rgba(220,235,255,0)');
+  x.fillStyle=i1; x.fillRect(0,0,S,60);
+  const i2=x.createLinearGradient(0,S-60,0,S); i2.addColorStop(0,'rgba(220,235,255,0)'); i2.addColorStop(1,'rgba(220,235,255,1)');
+  x.fillStyle=i2; x.fillRect(0,S-60,S,60);
+  return new THREE.CanvasTexture(c);
+}
+
+/* ═══════════════════ ARAZİ — THREE.JS ═══════════════════ */
+let tR, tS, tC;
+let tAnimId=null, tRunning=false;
+let td=false, tpx=0, tpy=0;
+let tTerrainGeo=null, tTerrainMat=null, tWaterGeo=null, tWaterMat=null, tBaseGeo=null;
+const torb = { az:.7, el:.52, r:540, ta:.7, te:.52, tr:540 };
+let terrainEventsAdded = false;
+
+/* ── fBm prosedürel arazi gürültüsü ── */
+function frac(v)   { return v - Math.floor(v); }
+function smooth(t) { return t*t*(3-2*t); }
+function vnoise(x,y) {
+  const ix=Math.floor(x), iy=Math.floor(y), fx=smooth(frac(x)), fy=smooth(frac(y));
+  function h(n) { return frac(Math.sin(n*127.1+311.7)*43758.5453); }
+  const a=h(ix+iy*101), b=h(ix+1+iy*101), c=h(ix+(iy+1)*101), d=h(ix+1+(iy+1)*101);
+  return a+(b-a)*fx+(c-a)*fy+(a-b-c+d)*fx*fy;
+}
+function fbm(x,y,oct) { let v=0,amp=.5,f=1; for(let i=0;i<oct;i++){v+=vnoise(x*f,y*f)*amp;amp*=.5;f*=2;} return v; }
+
+/* ── Hypsometric renk ── */
+function hColor(h) {
+  if (h<.05) return [.07,.20,.42]; if (h<.10) return [.10,.30,.58]; if (h<.16) return [.70,.60,.42];
+  if (h<.36) return [.22,.48,.18]; if (h<.54) return [.16,.38,.13]; if (h<.68) return [.42,.35,.27];
+  if (h<.80) return [.50,.46,.42]; if (h<.91) return [.72,.70,.68]; return [.90,.92,.95];
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   YARDIMCI FONKSİYONLAR — Poligon Geometrisi
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* Lat/lon → yerel XZ koordinatı (origin: centroid, ölçek: SZ birimine sığar)
+   Eşit uzaklıklı projeksiyon: dX = dLon·cos(cLat)·R·π/180,  dZ = dLat·R·π/180 */
+function ptsToLocal(ptsArr, SZ) {
+  var cLat = 0, cLon = 0, n = ptsArr.length;
+  for (var i=0; i<n; i++) { cLat += ptsArr[i].lat; cLon += ptsArr[i].lon; }
+  cLat /= n; cLon /= n;
+
+  var R = 6371000;
+  var cosLat = Math.cos(cLat * Math.PI / 180);
+  var local = ptsArr.map(function(p) {
+    return {
+      x: (p.lon - cLon) * cosLat * (Math.PI / 180) * R,
+      z: (p.lat - cLat) * (Math.PI / 180) * R
+    };
+  });
+
+  var xs = local.map(function(p){return p.x;}),
+      zs = local.map(function(p){return p.z;});
+  var minX = Math.min.apply(null,xs), maxX = Math.max.apply(null,xs);
+  var minZ = Math.min.apply(null,zs), maxZ = Math.max.apply(null,zs);
+  var span = Math.max(maxX-minX, maxZ-minZ) || 1;
+  var scale = SZ * 0.88 / span;
+
+  return local.map(function(p) {
+    return { x: p.x * scale, z: p.z * scale };
+  });
+}
+
+/* Ray-casting 2D içinde-nokta testi (XZ düzlemi) */
+function pointInPolygon(px, pz, polygon) {
+  var inside = false, n = polygon.length;
+  for (var i=0, j=n-1; i<n; j=i++) {
+    var xi=polygon[i].x, zi=polygon[i].z;
+    var xj=polygon[j].x, zj=polygon[j].z;
+    if (((zi>pz)!==(zj>pz)) && (px < (xj-xi)*(pz-zi)/(zj-zi)+xi))
+      inside = !inside;
+  }
+  return inside;
+}
+
+/* THREE.Shape oluşturur.
+   Koordinat dönüşümü: shapeX = p.x, shapeY = -p.z
+   Ardından ExtrudeGeometry + rotateX(-PI/2) uygulandığında:
+     dünya X = p.x  ✓
+     dünya Z = p.z  ✓   (–shapeY → –(–p.z) = p.z)
+     dünya Y = extrüzyon derinliği (0…depth)  ✓                 */
+function makePolyShape(localPts) {
+  /* İşaret alanı hesabı → şeklin sarım yönü tespiti
+     Pozitif alan = XZ'de CCW (saat yönünün tersine).
+     THREE.Shape dış sınır için CCW ister; ters sarımda normals flip olur.
+     Burada malzemelerde DoubleSide kullanıldığından sarım yönü görsel açıdan
+     önemsizdir — yine de doğru yönü atar. */
+  var area = 0, n = localPts.length;
+  for (var i=0, j=n-1; i<n; j=i++) {
+    area += localPts[i].x * localPts[j].z - localPts[j].x * localPts[i].z;
+  }
+  // area < 0 → XZ'de CW → tersine çevir
+  var ordered = (area < 0) ? localPts.slice().reverse() : localPts;
+
+  var shape = new THREE.Shape();
+  ordered.forEach(function(p, i) {
+    if (i===0) shape.moveTo(p.x, -p.z);
+    else        shape.lineTo(p.x, -p.z);
+  });
+  shape.closePath();
+  return shape;
+}
+
+/* Izgara tabanlı poligon arazi geometrisi.
+   Algoritma:
+   1. SZ×SZ alanı SEG×SEG hücreye böl.
+   2. Her köşe noktası için pointInPolygon testi uygula.
+   3. Polygon içindeki noktalara fBm gürültüsü ata + yüksekliği normalize et.
+   4. Dört köşesi de içeride olan hücrelerden üçgen oluştur.
+
+   Üçgen sarımı CCW (yukarıdan bakışta):
+     Hücre: a=sol-alt, b=sağ-alt, c=sol-üst, d=sağ-üst
+     Üçgen 1: a→d→b  (normal +Y ✓)
+     Üçgen 2: a→c→d  (normal +Y ✓)                                        */
+function buildPolygonTerrainGeo(localPts, SEG, SZ, MAXH, SEED) {
+  var step  = SZ / SEG;
+  var half  = SZ / 2;
+  var gridW = SEG + 1;
+  var total = gridW * gridW;
+
+  /* 1. Geçiş: içerideki noktaları belirle + ham yüksekliği hesapla */
+  var insideArr = new Uint8Array(total);
+  var rawH      = new Float32Array(total);
+  var hMn = 1e9, hMx = -1e9;
+
+  for (var iz=0; iz<gridW; iz++) {
+    for (var ix=0; ix<gridW; ix++) {
+      var wx = -half + ix*step;
+      var wz = -half + iz*step;
+      if (pointInPolygon(wx, wz, localPts)) {
+        insideArr[iz*gridW+ix] = 1;
+        var xv = wx/SZ*4 + SEED, zv = wz/SZ*4 + SEED;
+        var base  = fbm(xv, zv, 7);
+        var ridge = Math.abs(fbm(xv*1.35+99, zv*1.35+99, 5) - 0.5) * 2;
+        var val   = base*0.65 + ridge*0.35;
+        rawH[iz*gridW+ix] = val;
+        if (val < hMn) hMn = val;
+        if (val > hMx) hMx = val;
+      }
+    }
+  }
+
+  /* 2. Geçiş: normalize → köşe dizileri */
+  var actualIdx = new Int32Array(total).fill(-1);
+  var positions = [], colors = [];
+  var vCount = 0;
+  var rng = Math.max(hMx - hMn, 0.0001);
+
+  for (var iz2=0; iz2<gridW; iz2++) {
+    for (var ix2=0; ix2<gridW; ix2++) {
+      var k = iz2*gridW+ix2;
+      if (!insideArr[k]) continue;
+      var wx2 = -half + ix2*step;
+      var wz2 = -half + iz2*step;
+      var nh  = (rawH[k] - hMn) / rng;
+      positions.push(wx2, nh*MAXH, wz2);
+      var rgb = hColor(nh);
+      colors.push(rgb[0], rgb[1], rgb[2]);
+      actualIdx[k] = vCount++;
+    }
+  }
+
+  /* 3. Geçiş: üçgen dizini — CCW sarım (normal yukarı) */
+  var indices = [];
+  for (var iz3=0; iz3<SEG; iz3++) {
+    for (var ix3=0; ix3<SEG; ix3++) {
+      var a = actualIdx[ iz3    * gridW + ix3    ];
+      var b = actualIdx[ iz3    * gridW + ix3 + 1];
+      var c = actualIdx[(iz3+1) * gridW + ix3    ];
+      var d = actualIdx[(iz3+1) * gridW + ix3 + 1];
+      if (a>=0 && d>=0 && b>=0) indices.push(a, d, b); // üçgen 1
+      if (a>=0 && c>=0 && d>=0) indices.push(a, c, d); // üçgen 2
+    }
+  }
+
+  var geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('color',    new THREE.Float32BufferAttribute(colors, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   buildTerrain — Poligon şeklini gerçek 3D geometriye çevirir
+   ─────────────────────────────────────────────────────────────────────────
+   ■ Arazi  : grid-maskeli BufferGeometry + fBm gürültüsü
+   ■ Su     : ExtrudeGeometry(shape, depth=MAXH) + rotateX(-PI/2)
+              scale.y = waterY/MAXH  →  alt yüzey y=0'da sabit
+   ■ Kaide  : ExtrudeGeometry(shape, depth=BASE) + rotateX(-PI/2)
+              position.y = -BASE  →  y=[-BASE..0] arası
+   Hiçbir geometri sabit kare/dikdörtgen kullanmaz.                        */
+function buildTerrain() {
+  var globeCanvas   = document.getElementById('gc');
+  var terrainCanvas = document.getElementById('tc');
+  globeCanvas.style.display='none'; terrainCanvas.style.display='block';
+  document.getElementById('back-btn').classList.add('on');
+  document.getElementById('terrain-hint').classList.add('on');
+
+  var sz = mvSize();
+
+  /* VRAM temizliği */
+  if (tR) {
+    tRunning=false; cancelAnimationFrame(tAnimId); tAnimId=null;
+    if (tTerrainGeo){tTerrainGeo.dispose();tTerrainGeo=null;}
+    if (tTerrainMat){tTerrainMat.dispose();tTerrainMat=null;}
+    if (tWaterGeo)  {tWaterGeo.dispose();  tWaterGeo  =null;}
+    if (tWaterMat)  {tWaterMat.dispose();  tWaterMat  =null;}
+    if (tBaseGeo)   {tBaseGeo.dispose();   tBaseGeo   =null;}
+    tR.dispose(); tR=null;
+  }
+
+  tR = new THREE.WebGLRenderer({ canvas:terrainCanvas, antialias:true });
+  tR.setPixelRatio(Math.min(devicePixelRatio,2)); tR.setSize(sz.w,sz.h);
+  tR.shadowMap.enabled=true; tR.shadowMap.type=THREE.PCFSoftShadowMap;
+
+  tS = new THREE.Scene();
+  tS.background = new THREE.Color(0x8ec8e8);
+  tS.fog = new THREE.FogExp2(0xa0d4f0, 0.00075);
+  tC = new THREE.PerspectiveCamera(50, sz.w/sz.h, 0.5, 5000);
+
+  terrainAmb = new THREE.AmbientLight(0xc0d8f0, 0.70); tS.add(terrainAmb);
+  terrainSun = new THREE.DirectionalLight(0xfffbf0, 2.2);
+  terrainSun.position.set(380,620,280); terrainSun.castShadow=true;
+  terrainSun.shadow.mapSize.width = terrainSun.shadow.mapSize.height = 2048;
+  terrainSun.shadow.camera.left   = -360; terrainSun.shadow.camera.right  = 360;
+  terrainSun.shadow.camera.top    =  360; terrainSun.shadow.camera.bottom = -360;
+  terrainSun.shadow.camera.near   = 1;    terrainSun.shadow.camera.far    = 2200;
+  terrainSun.shadow.bias = -0.001; tS.add(terrainSun);
+  terrainSun.intensity = (document.getElementById('s-sun').value/100)*2.2;
+  terrainAmb.intensity = (document.getElementById('s-amb').value/100)*0.9;
+  var fill = new THREE.DirectionalLight(0x6688bb, 0.45);
+  fill.position.set(-300,160,-200); tS.add(fill);
+
+  var MAXH = parseInt(document.getElementById('s-hgt').value) * 2 + 75;
+  var SEG  = Math.round(32 + (parseInt(document.getElementById('s-res').value) - 1) * 96 / 9);
+  var SEED = Math.random() * 1000;
+  var SZ   = 300;
+  var BASE = 50;
+
+  /* Lat/lon → yerel XZ koordinatları */
+  var localPts = ptsToLocal(pts, SZ);
+
+  /* ── Arazi Mesh (Poligon maskeli ızgara + fBm) ── */
+  tTerrainGeo = buildPolygonTerrainGeo(localPts, SEG, SZ, MAXH, SEED);
+  tTerrainMat = new THREE.MeshPhongMaterial({
+    vertexColors: true,
+    shininess:    14,
+    specular:     new THREE.Color(0x080808)
+  });
+  var tm = new THREE.Mesh(tTerrainGeo, tTerrainMat);
+  tm.castShadow = tm.receiveShadow = true;
+  tS.add(tm);
+
+  currentMAXH = MAXH;
+
+  /* Başlangıç su seviyesi */
+  var initWatPct = parseInt(document.getElementById('s-wat').value);
+  var WL = (initWatPct / 100) * MAXH;
+  var initWatM = Math.round(WL);
+  document.getElementById('v-wat').textContent = initWatM + ' m';
+  document.getElementById('water-level-lbl').textContent = '\uD83D\uDCA7 Su: ' + initWatM + ' m';
+
+  /* ── Su Mesh (ExtrudeGeometry — poligon şekilli hacimsek su kütlesi) ──
+     Shape XY'de tanımlanır (shapeX=p.x, shapeY=–p.z).
+     ExtrudeGeometry Z yönünde extrüde eder (0…MAXH).
+     rotateX(–PI/2) uygulandıktan sonra:
+       y_dünya = z_shape → y=[0..MAXH]
+       z_dünya = –shapeY = p.z  ✓
+     scale.y = waterY/MAXH → su alt yüzeyi y=0'da kalır.                  */
+  var waterShape = makePolyShape(localPts);
+  tWaterGeo = new THREE.ExtrudeGeometry(waterShape, { depth: MAXH, bevelEnabled: false });
+  tWaterGeo.rotateX(-Math.PI / 2);
+  tWaterMat = new THREE.MeshPhongMaterial({
+    color:       0x1464a0,
+    transparent: true,
+    opacity:     0.72,
+    shininess:   180,
+    specular:    new THREE.Color(0x4499cc),
+    depthWrite:  false,
+    side:        THREE.DoubleSide
+  });
+  terrainWater = new THREE.Mesh(tWaterGeo, tWaterMat);
+  var initWatScale = (MAXH > 0) ? WL / MAXH : 0.001;
+  terrainWater.scale.y    = Math.max(initWatScale, 0.001);
+  terrainWater.position.y = 0; // ExtrudeGeometry y=0'dan başladığı için ofset gerekmez
+  terrainWater.visible    = initWatScale > 0.0005;
+  terrainWater.receiveShadow = true;
+  tS.add(terrainWater);
+
+  document.getElementById('water-level-lbl').classList.add('on');
+
+  /* ── Ahşap Kaide (ExtrudeGeometry — poligon şekilli) ──
+     Aynı shape, depth=BASE. rotateX(–PI/2) sonrasında y=[0..BASE].
+     position.y = –BASE → dünya y=[–BASE..0]  ✓                           */
+  var wdM = new THREE.MeshPhongMaterial({
+    map:       new THREE.CanvasTexture(makeWoodTex()),
+    shininess: 8,
+    side:      THREE.DoubleSide
+  });
+  var dkM = new THREE.MeshPhongMaterial({
+    color: 0x321a08,
+    side:  THREE.DoubleSide
+  });
+  tBaseGeo = new THREE.ExtrudeGeometry(makePolyShape(localPts), { depth: BASE, bevelEnabled: false });
+  tBaseGeo.rotateX(-Math.PI / 2);
+  /* ExtrudeGeometry material grupları:
+       0 → extrüde yan yüzeyler   (ahşap doku)
+       1 → ön kapak  (y=0, üst yüzey  = arazi tabanı seviyesi)
+       2 → arka kapak (y=BASE, alt yüzey = kaideinin alt yüzü)             */
+  var bm = new THREE.Mesh(tBaseGeo, [wdM, wdM, dkM]);
+  bm.position.y = -BASE;
+  bm.castShadow = bm.receiveShadow = true;
+  tS.add(bm);
+
+  makeClouds(tS, SZ, MAXH);
+
+  /* Event listener'lar yalnızca bir kez eklenir */
+  if (!terrainEventsAdded) {
+    terrainEventsAdded = true;
+    terrainCanvas.addEventListener('mousedown',  onTerrainMouseDown);
+    terrainCanvas.addEventListener('mousemove',  onTerrainMouseMove);
+    terrainCanvas.addEventListener('mouseup',    function(){td=false;});
+    terrainCanvas.addEventListener('mouseleave', function(){td=false;});
+    terrainCanvas.addEventListener('wheel', function(e){e.preventDefault();torb.tr=Math.max(180,Math.min(1000,torb.tr+e.deltaY));},{passive:false});
+    var tt0d=0;
+    terrainCanvas.addEventListener('touchstart', function(e){
+      if(e.touches.length===1){td=true;tpx=e.touches[0].clientX;tpy=e.touches[0].clientY;}
+      else if(e.touches.length===2){td=false;var dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;tt0d=Math.sqrt(dx*dx+dy*dy);}
+    },{passive:true});
+    terrainCanvas.addEventListener('touchmove', function(e){
+      e.preventDefault();
+      if(e.touches.length===1&&td){torb.ta+=(e.touches[0].clientX-tpx)*.013;torb.te=Math.max(.05,Math.min(1.45,torb.te-(e.touches[0].clientY-tpy)*.009));tpx=e.touches[0].clientX;tpy=e.touches[0].clientY;}
+      else if(e.touches.length===2){var dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;var d=Math.sqrt(dx*dx+dy*dy);torb.tr=Math.max(180,Math.min(1000,torb.tr*tt0d/d));tt0d=d;}
+    },{passive:false});
+    terrainCanvas.addEventListener('touchend', function(){td=false;},{passive:true});
+  }
+
+  hideLoader(); startTerrain();
+}
+
+function onTerrainMouseDown(e){td=true;tpx=e.clientX;tpy=e.clientY;}
+function onTerrainMouseMove(e){
+  if(!td)return;
+  torb.ta+=(e.clientX-tpx)*.013;
+  torb.te=Math.max(.05,Math.min(1.45,torb.te-(e.clientY-tpy)*.009));
+  tpx=e.clientX;tpy=e.clientY;
+}
+
+function makeWoodTex() {
+  var c=document.createElement('canvas'); c.width=256; c.height=512;
+  var x=c.getContext('2d'); x.fillStyle='#6b3c1e'; x.fillRect(0,0,256,512);
+  for(var y=0;y<512;y+=7+Math.random()*7){
+    x.strokeStyle='rgba('+(38+Math.random()*22|0)+','+(18+Math.random()*12|0)+','+(5+Math.random()*6|0)+',.4)';
+    x.lineWidth=1+Math.random()*2; x.beginPath(); x.moveTo(0,y); x.lineTo(256,y+(Math.random()-.5)*14); x.stroke();
+  }
+  return c;
+}
+
+function makeClouds(scene,sz,maxH) {
+  for(var i=0;i<8;i++){
+    var cw=90+Math.random()*130, cd=45+Math.random()*65;
+    var cg=new THREE.PlaneGeometry(cw,cd); cg.rotateX(-Math.PI/2);
+    var cc=document.createElement('canvas'); cc.width=256; cc.height=128;
+    var cx=cc.getContext('2d');
+    for(var j=0;j<5+Math.floor(Math.random()*5);j++){
+      var bx=25+Math.random()*206,by=15+Math.random()*98,br=28+Math.random()*48;
+      var grad=cx.createRadialGradient(bx,by,0,bx,by,br);
+      grad.addColorStop(0,'rgba(255,255,255,.92)'); grad.addColorStop(1,'rgba(255,255,255,0)');
+      cx.fillStyle=grad; cx.fillRect(0,0,256,128);
+    }
+    var cm=new THREE.Mesh(cg,new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(cc),transparent:true,depthWrite:false,side:THREE.DoubleSide,opacity:.87}));
+    cm.position.set((Math.random()-.5)*sz*1.6,maxH+65+Math.random()*120,(Math.random()-.5)*sz*1.6);
+    cm.rotation.z=Math.random()*Math.PI; scene.add(cm);
+  }
+}
+
+function startTerrain(){if(tRunning)return;tRunning=true;tickTerrain();}
+
+function tickTerrain(){
+  if(!tRunning)return;
+  tAnimId=requestAnimationFrame(tickTerrain);
+  torb.az+=(torb.ta-torb.az)*.08; torb.el+=(torb.te-torb.el)*.08; torb.r+=(torb.tr-torb.r)*.08;
+  if(!td) torb.ta+=.0012;
+  tC.position.set(torb.r*Math.cos(torb.el)*Math.cos(torb.az),torb.r*Math.sin(torb.el),torb.r*Math.cos(torb.el)*Math.sin(torb.az));
+  tC.lookAt(0,32,0); tR.render(tS,tC);
+}
+
+function backToGlobe(){
+  tRunning=false; cancelAnimationFrame(tAnimId); tAnimId=null;
+  document.getElementById('gc').style.display='block'; document.getElementById('tc').style.display='none';
+  document.getElementById('back-btn').classList.remove('on'); document.getElementById('terrain-hint').classList.remove('on');
+  document.getElementById('water-level-lbl').classList.remove('on');
+  onResize(); startGlobe();
+}
+
+function showLoader(){document.getElementById('loader').classList.add('on');}
+function hideLoader(){document.getElementById('loader').classList.remove('on');}
+
+})();
+</script>
+</body>
+</html>
